@@ -28,6 +28,12 @@ body{background:#dce6f5;font-family:var(--sans);min-height:100vh;padding:24px}
 .header-title h1{color:#fff;font-size:1.3rem;font-weight:700}
 .header-title p{color:#7a9acc;font-size:0.7rem;margin-top:2px;letter-spacing:0.05em;text-transform:uppercase}
 
+/* 12H / 24H toggle */
+.fmt-toggle{margin-left:auto;display:flex;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:20px;padding:3px}
+.fmt-btn{border:none;background:transparent;color:#8aa4cc;font-family:var(--sans);font-size:0.72rem;font-weight:700;letter-spacing:0.05em;padding:6px 14px;border-radius:16px;cursor:pointer;transition:all 0.15s}
+.fmt-btn:hover{color:#fff}
+.fmt-btn.active{background:var(--accent);color:#fff}
+
 .controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .ctrl-pill{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:8px 14px}
 .ctrl-pill label{color:#8aa4cc;font-size:0.67rem;text-transform:uppercase;letter-spacing:0.08em;white-space:nowrap}
@@ -58,8 +64,8 @@ td.col-num{font-family:var(--mono);font-size:0.71rem;color:#aab;width:38px;text-
 td.col-country{font-weight:600;color:var(--text);min-width:160px}
 td.col-tz{font-family:var(--mono);font-size:0.79rem;color:var(--accent);font-weight:700;width:66px}
 td.col-offset{font-family:var(--mono);font-size:0.78rem;color:var(--text-muted);width:84px}
-td.col-live{background:#f0fdf7;font-family:var(--mono);font-size:1.05rem;font-weight:700;color:#0d6640;letter-spacing:0.02em;width:120px}
-td.col-conv{background:#fffbee;font-family:var(--mono);font-size:1.05rem;font-weight:700;color:#9a6000;letter-spacing:0.02em;width:130px}
+td.col-live{background:#f0fdf7;font-family:var(--mono);font-size:1.05rem;font-weight:700;color:#0d6640;letter-spacing:0.02em;width:120px;min-width:150px}
+td.col-conv{background:#fffbee;font-family:var(--mono);font-size:1.05rem;font-weight:700;color:#9a6000;letter-spacing:0.02em;width:130px;min-width:170px}
 td.col-conv.empty{color:#ccc;font-size:0.78rem;font-weight:400;font-family:var(--sans)}
 td.col-date{font-size:0.75rem;color:var(--text-muted);width:100px}
 td.col-del{width:40px;text-align:center}
@@ -102,6 +108,10 @@ td.col-del{width:40px;text-align:center}
     <div class="header-title">
       <h1>World Clock &amp; Time Zone Converter</h1>
       <p>Live clocks · convert any time across zones</p>
+    </div>
+    <div class="fmt-toggle">
+      <button class="fmt-btn" id="btn12" onclick="setFormat(false)">12H</button>
+      <button class="fmt-btn" id="btn24" onclick="setFormat(true)">24H</button>
     </div>
   </div>
   <div class="controls">
@@ -184,6 +194,10 @@ let rows=[
 // conversion state — null means no conversion set
 let convBase = null; // a Date object representing the reference moment
 
+// clock format preference (remembered between visits)
+let use24 = true;
+try { if (localStorage.getItem("clockFmt") === "12") use24 = false; } catch (e) {}
+
 function offsetMin(zone,d){
   const fmt=tz=>new Intl.DateTimeFormat("en-US",{timeZone:tz,hour:"2-digit",minute:"2-digit",hour12:false}).formatToParts(d);
   const mins=p=>+p.find(x=>x.type==="hour").value*60+ +p.find(x=>x.type==="minute").value;
@@ -192,8 +206,25 @@ function offsetMin(zone,d){
   return diff;
 }
 function fmtOffset(m){const s=m>=0?"+":"-";const h=Math.floor(Math.abs(m)/60);const mn=Math.abs(m)%60;return"UTC "+s+h+(mn?":"+String(mn).padStart(2,"0"):"");}
-function fmtTime(d,z){return new Intl.DateTimeFormat("en-US",{timeZone:z,hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(d).replace(/^24:/,"00:");}
-function fmtHM(d,z){return new Intl.DateTimeFormat("en-US",{timeZone:z,hour:"2-digit",minute:"2-digit",hour12:false}).format(d).replace(/^24:/,"00:");}
+
+// display formatters (respect the 12H/24H toggle)
+function fmtTime(d,z){
+  return new Intl.DateTimeFormat("en-US",{timeZone:z,hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:use24?"h23":"h12"}).format(d);
+}
+function fmtHMdisp(d,z){
+  return new Intl.DateTimeFormat("en-US",{timeZone:z,hour:"2-digit",minute:"2-digit",hourCycle:use24?"h23":"h12"}).format(d);
+}
+// internal 24h version used for calculations (does NOT change with toggle)
+function fmtHM(d,z){
+  return new Intl.DateTimeFormat("en-US",{timeZone:z,hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(d);
+}
+// formats the "HH:MM" value from the time input for the label
+function fmtInput(val){
+  if(use24) return val;
+  const [h,m]=val.split(":").map(Number);
+  return ((h%12)||12)+":"+String(m).padStart(2,"0")+" "+(h<12?"AM":"PM");
+}
+
 function fmtDate(d,z){return new Intl.DateTimeFormat("en-US",{timeZone:z,weekday:"short",month:"short",day:"numeric"}).format(d);}
 function doy(d,z){const s=new Intl.DateTimeFormat("en-US",{timeZone:z,year:"numeric",month:"numeric",day:"numeric"}).format(d);const[m,dy,y]=s.split("/").map(Number);return y*400+m*32+dy;}
 
@@ -205,8 +236,7 @@ function buildConvBase(){
   const val=document.getElementById("refTime").value;
   if(!val)return null;
   const [hh,mm]=val.split(":").map(Number);
-  // We need to find a Date such that in `zone`, the time is hh:mm
-  // Strategy: take today in that zone, set hours/minutes
+  // Find a Date such that in `zone`, the time is hh:mm today
   const now=new Date();
   const cur=fmtHM(now,zone).split(":").map(Number);
   const diffMs=((hh-cur[0])*60+(mm-cur[1]))*60000;
@@ -219,7 +249,7 @@ function updateConvLabel(){
   const lbl=document.getElementById("convLabel");
   if(convBase){
     const zname=ALL.find(([,z])=>z===zone)?.[0]||zone;
-    lbl.textContent=`when it's ${val} in ${zname}`;
+    lbl.textContent=`when it's ${fmtInput(val)} in ${zname}`;
   } else {
     lbl.textContent="— set zone & time above —";
   }
@@ -236,7 +266,7 @@ function render(){
 
     let convCell="";
     if(convBase){
-      const ct=fmtHM(convBase,r.zone);
+      const ct=fmtHMdisp(convBase,r.zone);
       const cd=fmtDate(convBase,r.zone);
       const rowDOY=doy(convBase,r.zone);
       let badge="";
@@ -259,6 +289,15 @@ function render(){
   });
   document.getElementById("tzBody").innerHTML=html;
   document.getElementById("rowCount").textContent=rows.length+" zone"+(rows.length!==1?"s":"");
+}
+
+function setFormat(is24){
+  use24=is24;
+  try { localStorage.setItem("clockFmt", is24?"24":"12"); } catch (e) {}
+  document.getElementById("btn24").classList.toggle("active",is24);
+  document.getElementById("btn12").classList.toggle("active",!is24);
+  updateConvLabel();
+  render();
 }
 
 function resetConversion(){
@@ -327,7 +366,7 @@ function confirmAdd(){
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
 
 buildRefSelect();
-render();
+setFormat(use24);   // sets active toggle button + renders
 setInterval(render,1000);
 </script>
 </body>
